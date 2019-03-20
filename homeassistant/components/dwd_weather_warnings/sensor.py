@@ -4,8 +4,7 @@ Support for getting statistical data from a DWD Weather Warnings.
 For more details about this platform, please refer to the documentation at
 https://home-assistant.io/components/sensor.dwd_weather_warnings/
 
-Data is fetched from DWD:
-https://rcccm.dwd.de/DE/wetter/warnungen_aktuell/objekt_einbindung/objekteinbindung.html
+Data is fetched from DWD using WFS 2.0 services
 
 Warnungen vor extremem Unwetter (Stufe 4)
 Unwetterwarnungen (Stufe 3)
@@ -166,22 +165,53 @@ class DwdWeatherWarningsSensor(Entity):
 class DwdWeatherWarningsAPI:
     """Get the latest data and update the states."""
 
+
     def __init__(self, region_name):
-        """Initialize the data object."""
-        resource = "{}{}{}?{}".format(
-            'https://',
-            'www.dwd.de',
-            '/DWD/warnungen/warnapp_landkreise/json/warnings.json',
-            'jsonp=loadWarnings'
+        """Check if region exists and initialize the data object."""
+        
+        import xml.etree.ElementTree as ET
+
+        self.region_name = region_name
+        if not (self.regioncheck()):
+            return
+        
+         resource = "{}{}{}?{}".format(
+        'https://'
+        'maps.dwd.de'
+        '/geoserver/dwd/'
+        'ows?service=WFS&version=2.0.0&request=GetFeature&typeName=dwd:Warngebiete_Kreise&CQL_FILTER=NAME=%27' + self.region_name + '%27'
         )
 
         self._rest = RestData('GET', resource, None, None, None, True)
-        self.region_name = region_name
+
         self.region_id = None
         self.region_state = None
         self.data = None
         self.available = True
         self.update()
+
+    def regioncheck(){
+        regioncheck_resource = "{}{}{}?{}".format(
+        'https://'
+        'maps.dwd.de'
+        '/geoserver/dwd/'
+        'ows?service=WFS&version=2.0.0&request=GetFeature&typeName=dwd:Warnungen_Landkreise&CQL_FILTER=AREADESC=%27' + self.region_name + '%27'
+        )
+        
+        regioncheck_rest = RestData('GET', resource, None, None, None, True)
+
+        regioncheck_rest.update()
+
+        regioncheck_string = regioncheck_rest.data
+        
+        regioncheck_tree = ET.ElementTree(ET.fromstring(regioncheck_string))
+        regioncheck = tree.getroot().attrib["numberReturned"]
+        if not regioncheck:
+            _LOGGER.error("Configured region is not known!")
+            self.available = False
+            return False
+        return True
+    }
 
     @Throttle(SCAN_INTERVAL)
     def update(self):
